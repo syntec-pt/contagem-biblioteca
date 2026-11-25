@@ -1,0 +1,33 @@
+name: contar
+on:
+  workflow_dispatch:
+    inputs:
+      lote: {description: "ficheiro em lotes/", required: true}
+      partes: {description: "número de máquinas", required: true, default: "4"}
+      pausa: {description: "segundos entre páginas", required: true, default: "12"}
+jobs:
+  matriz:
+    runs-on: ubuntu-latest
+    outputs:
+      ks: ${{ steps.m.outputs.ks }}
+    steps:
+      - id: m
+        run: echo "ks=$(python3 -c "import json;print(json.dumps(list(range(${{ inputs.partes }}))))")" >> "$GITHUB_OUTPUT"
+  contar:
+    needs: matriz
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        k: ${{ fromJson(needs.matriz.outputs.ks) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: pip install -q playwright==1.48.0 && python -m playwright install --with-deps chromium > /dev/null
+      - run: curl -s -m 15 https://api64.ipify.org || true; echo
+      - run: python3 contar_gh.py "lotes/${{ inputs.lote }}" ${{ matrix.k }} ${{ inputs.partes }} "saida_${{ matrix.k }}.json" ${{ inputs.pausa }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: {name: "saida_${{ matrix.k }}", path: "saida_${{ matrix.k }}.json", if-no-files-found: ignore, retention-days: 1}
